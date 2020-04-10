@@ -1,0 +1,112 @@
+---
+title: "Week11"
+author: "Mathi Manavalan"
+date: "4/6/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Libraries
+```{r message=FALSE}
+library(tidyverse)
+library(Hmisc)
+library(caret)
+
+```
+
+## Data Import and Cleaning
+
+First, I am importing the entire dataset. 
+```{r message=FALSE, warning=FALSE}
+data <- as_tibble(spss.get("../data/GSS2006.sav", use.value.labels=TRUE)) 
+
+
+```
+
+Now,we only want the variables relevant to the personality inventory and the respondent's self-reported health. 
+For the personality inventory, I am interpreting this to mean the variables (according to the code book for this dataset) from BIG5A1 to BIG5E2 from *The 2006 Module: Personality Traits*. 
+For the respondent's self-reported health, I am interpreting this to mean the HEALTH variable.
+
+```{r}
+clean <- data %>% 
+  select(BIG5A1, BIG5A2, BIG5B1, BIG5B2, BIG5C1, BIG5C2, BIG5D1, BIG5D2, BIG5E1, BIG5E2, HEALTH) %>%
+  na.omit() %>% 
+  mutate_all(. %>% 
+           factor() %>% 
+           as.numeric()
+         )
+
+```
+Responses of 'don't know', 'inapplicable', or other unclearly answered items are appropriately marked as NA according to R, so I removed all rows of data that contain NA (in any column(s)). 
+
+All of the variables are in their appropriate data type (factors), with corresponding levels. I transformed the labeling of all variables to numeric.
+
+## Analysis
+
+Here, I am splitting the clean data into two tibbles. One (holdout) contains a random 250 set from clean, and the other (train) contains the remaining samples from. Then, I am creating an OLS model with 10-fold cross-validation (named olsr).
+```{r message=FALSE, include=FALSE}
+
+set.seed(1)
+
+# Shuffle row indices: rows
+rows <- sample(nrow(clean))
+
+# Randomly order data
+shuffled <- clean[rows, ]
+
+holdout <- clean[1:250, ]
+
+train <- clean[251:nrow(clean), ]
+
+olsr <- train(
+  HEALTH ~ .*., 
+  holdout,
+  method = "lm",
+  trControl = trainControl(
+    method = "cv", 
+    number = 10,
+    verboseIter = TRUE
+  )
+)
+
+```
+
+
+Here are the output of olsr as well as prediction in holdout.
+```{r}
+olsr
+
+predict(olsr, holdout)
+
+```
+
+Now I am going to 
+
+*10-fold elastic net regression*
+```{r}
+
+```
+
+*support vector regression*
+```{r}
+
+```
+
+*extreme gradient boosted regression*
+```{r}
+
+```
+
+
+
+
+
+
+## Visualization
+```{r}
+
+```
+
