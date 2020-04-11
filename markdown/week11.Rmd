@@ -26,23 +26,26 @@ data <- as_tibble(spss.get("../data/GSS2006.sav", use.value.labels=TRUE))
 
 ```
 
-Now,we only want the variables relevant to the personality inventory and the respondent's self-reported health. 
+Now, we only want the variables relevant to the personality inventory and the respondent's self-reported health. 
 For the personality inventory, I am interpreting this to mean the variables (according to the code book for this dataset) from BIG5A1 to BIG5E2 from *The 2006 Module: Personality Traits*. 
 For the respondent's self-reported health, I am interpreting this to mean the HEALTH variable.
 
 ```{r}
-clean <- data %>% 
+import <- data %>% 
   select(BIG5A1, BIG5A2, BIG5B1, BIG5B2, BIG5C1, BIG5C2, BIG5D1, BIG5D2, BIG5E1, BIG5E2, HEALTH) %>%
-  na.omit() %>% 
+  filter_all(any_vars(!is.na(.))) %>%  #removes rows where ALL values in row are NA
+  drop_na(HEALTH) %>%  # removes rows where our response variable, HEALTH, is NA
   mutate_all(. %>% 
            factor() %>% 
            as.numeric()
          )
 
-```
-Responses of 'don't know', 'inapplicable', or other unclearly answered items are appropriately marked as NA according to R, so I removed all rows of data that contain NA (in any column(s)). 
+clean <- import[!(rowSums(is.na(import)) == 10),]
 
-All of the variables are in their appropriate data type (factors), with corresponding levels. I transformed the labeling of all variables to numeric.
+
+```
+First, I selected all of the data pertaining to the personality inventory as well as the HEALTH variable. Then I removed all the rows that had NA responses for ALL of the variables. (Responses of 'don't know', 'inapplicable', or other unclearly answered items are appropriately marked as NA according to R.) Then, I removed all the rows where the response to the HEALTH variable was NA, since HEALTH is what we are trying to predict so we only want rows with a valid response for HEALTH. Last but not least, I converted all the variables into numeric factors. Finally, I created a clean tibble that doesn't contain rows which have NA responses for all the predictor variables (aka, the personality inventory variables, of which there are 10). In other words, I am keeping the rows which may have some predictor variables that have NA but if all the predictors are NA, the row is removed.
+
 
 ## Analysis
 
@@ -51,10 +54,8 @@ Here, I am splitting the clean data into two tibbles. One (holdout) contains a r
 
 set.seed(1)
 
-# Shuffle row indices: rows
 rows <- sample(nrow(clean))
 
-# Randomly order data
 shuffled <- clean[rows, ]
 
 holdout <- clean[1:250, ]
@@ -63,13 +64,15 @@ train <- clean[251:nrow(clean), ]
 
 olsr <- train(
   HEALTH ~ .*., 
-  holdout,
+  train,
   method = "lm",
+  preProcess = c("center", "scale", "zv", "medianImpute"),
   trControl = trainControl(
     method = "cv", 
     number = 10,
     verboseIter = TRUE
-  )
+  ),
+  na.action = na.pass
 )
 
 ```
@@ -77,36 +80,93 @@ olsr <- train(
 
 Here are the output of olsr as well as prediction in holdout.
 ```{r}
+summary(olsr)
+
 olsr
 
-predict(olsr, holdout)
+predict(olsr, holdout, na.action = na.pass)
 
 ```
 
-Now I am going to 
+We can see from the above output that the R squared value is almost zero.
+
+I have then ran this model 3 more times using different types of regression, along with the prediction on the holdout set of each model.
 
 *10-fold elastic net regression*
 ```{r}
+elastic <- train(
+  HEALTH ~ .*., 
+  train,
+  method = "glmnet",
+  preProcess = c("center", "scale", "zv", "medianImpute"),
+  trControl = trainControl(
+    method = "cv", 
+    number = 10,
+    verboseIter = TRUE
+  ),
+  na.action = na.pass
+)
+
+predict(elastic, holdout, na.action = na.pass)
 
 ```
 
+As we can see from the above output, the tuning parameters that worked best for the 10-fold elastic model was alpha = 1 and lambda = 0.0253. Since the optimal alpha value reported was 1, we know that the most optimal model was Lasso. And from the lambda value, we can see that there was a  pretty moderate penalty.
+```{r}
+
+```
+
+
 *support vector regression*
 ```{r}
+support <- train(
+  HEALTH ~ .*., 
+  train,
+  method = "svmLinear",
+  preProcess = c("center", "scale", "zv", "medianImpute"),
+  trControl = trainControl(
+    method = "cv", 
+    number = 10,
+    verboseIter = TRUE
+  ),
+  na.action = na.pass
+)
+
+predict(support, holdout, na.action = na.pass)
 
 ```
 
 *extreme gradient boosted regression*
 ```{r}
 
+extreme <- train(
+  HEALTH ~ .*., 
+  train,
+  method = "xgbLinear",
+  preProcess = c("center", "scale", "zv", "medianImpute"),
+  trControl = trainControl(
+    method = "cv", 
+    number = 10,
+    verboseIter = TRUE
+  ),
+  na.action = na.pass
+)
+
+
+predict(extreme, holdout, na.action = na.pass)
 ```
-
-
-
-
 
 
 ## Visualization
+
 ```{r}
 
+summary(resamples(list(olsr, elastic, support, extreme)))
+
+#dotplot(resamples(list(olsr, elastic, support, extreme)), metric="ROC")
+
 ```
+
+Using the above output, we can easily compare the 4 different models. Looking at the RMSE and the R squared values, we can see that the models are relatively close in performance. Looking just at the RMSE values, it looks like overall, model 2 seems to be performing the best, with smaller RMSEs.
+In running the models, I noticed that the extreme gradient regression model look abnormally long but for relatively similar performance to the other models. 
 
